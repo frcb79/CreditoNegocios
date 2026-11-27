@@ -8,7 +8,7 @@ import { pool } from "./db";
  */
 const ACCEPTED_TYPES = new Set([
   "email.sent", "email.delivered", "email.delivery_delayed",
-  "email.bounced", "email.failed", "email.complained", "email.suppressed",
+  "email.bounced", "email.failed", "email.complained", "email.suppressed", "email.opened", "email.clicked",
 ]);
 const MAX_CLOCK_SKEW_SECONDS = 300;
 
@@ -65,7 +65,7 @@ export function registerResendWebhook(app: Express) {
     }, secret)) return res.status(401).json({ message: "Firma inválida" });
     const event = parseResendDeliveryEvent(id, req.body);
     if (!event) {
-      // Signed events for domains, contacts, opened and clicked are not relevant.
+      // Signed events for domains and contacts are not relevant.
       // Invalid/truncated email data must never enter the audit.
       return res.status(200).json({ received: true });
     }

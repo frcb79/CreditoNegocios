@@ -1,3 +1,4 @@
+import type { InvitationReminderDay } from "./brokerInvitationReminderSchema";
 import { randomBytes } from "node:crypto";
 import { pool } from "./db";
 import { storage } from "./storage";
@@ -33,13 +34,18 @@ export const REMINDER_OUTCOME_SQL = `UPDATE public.broker_invitation_reminder_ev
           WHERE user_id=$1 AND reminder_day=$2`;
 
 /** At most one reminder on a scheduled run, never three catch-up emails at once. */
-export function selectReminderDay(invitedAt: Date, now = new Date()): 3 | 7 | 12 | 15 | null {
+export function selectReminderDay(invitedAt: Date, now = new Date(), extended = false): InvitationReminderDay | null {
   const elapsed = now.getTime() - invitedAt.getTime();
   if (elapsed < 3 * 86400000) return null;
   if (elapsed < 7 * 86400000) return 3;
   if (elapsed < 12 * 86400000) return 7;
   if (elapsed < 15 * 86400000) return 12;
-  return 15;
+  if (!extended || elapsed < 25 * 86400000) return 15;
+  if (elapsed < 29 * 86400000) return 25;
+  if (elapsed < 33 * 86400000) return 29;
+  if (elapsed < 39 * 86400000) return 33;
+  if (elapsed < 43 * 86400000) return 39;
+  return null; // no late catch-up after the final four-day window
 }
 
 export async function runBrokerInvitationReminders(): Promise<{
@@ -62,14 +68,16 @@ export async function runBrokerInvitationReminders(): Promise<{
     SELECT u.id, u.email, u.first_name, u.last_name, fi.invited_at
       FROM first_invite fi JOIN public.users u ON u.id = fi.user_id
      WHERE u.role IN ('broker', 'master_broker')
-       AND u.password IS NULL AND u.is_active IS DISTINCT FROM FALSE
+       AND u.password IS NULL AND u.is_active IS DISTINCT FROM FALSE AND u.status='active' AND u.access_status NOT IN ('expired','suspended')
+       AND coalesce(u.profile_data->>'commercialMailOptOut', 'false') <> 'true'
        AND (u.reset_token_expiry IS NULL OR u.reset_token_expiry <= NOW())
        AND coalesce(u.profile_data->>'invitationFollowupPaused', 'false') <> 'true'
        AND fi.invited_at <= NOW() - INTERVAL '3 days'
-     ORDER BY fi.invited_at ASC LIMIT 250`);
+       AND (NOT $1::boolean OR fi.invited_at > NOW() - INTERVAL '43 days')
+     ORDER BY fi.invited_at ASC LIMIT 250`,[process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true"]);
   const output = { due: 0, sent: 0, failed: 0, skipped: 0 };
   for (const user of rows) {
-    const day = selectReminderDay(new Date(user.invited_at));
+    const day = selectReminderDay(new Date(user.invited_at), new Date(), process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true");
     if (!day) continue;
     // Uniqueness in Postgres is the cross-worker/idempotency boundary.
     const claim = await pool.query(
@@ -82,6 +90,8 @@ export async function runBrokerInvitationReminders(): Promise<{
     try {
       const refreshed = await storage.getUser(user.id);
       if (!refreshed || refreshed.password || refreshed.isActive === false ||
+          refreshed.status !== "active" || ["expired","suspended"].includes(refreshed.accessStatus) ||
+          (refreshed.profileData as any)?.commercialMailOptOut === true ||
           (refreshed.profileData as any)?.invitationFollowupPaused === true) {
         await pool.query(
           "UPDATE public.broker_invitation_reminder_events SET status='skipped', updated_at=NOW() WHERE user_id=$1 AND reminder_day=$2",
@@ -94,7 +104,8 @@ export async function runBrokerInvitationReminders(): Promise<{
       // a token once a password has been registered, nor for paused accounts.
       const tokenSet = await pool.query(
         `UPDATE public.users SET reset_token=$2, reset_token_expiry=$3, updated_at=NOW()
-          WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE
+          WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE AND status='active' AND access_status NOT IN ('expired','suspended')
+            AND COALESCE(profile_data->>'commercialMailOptOut','false') <> 'true'
             AND (reset_token_expiry IS NULL OR reset_token_expiry <= NOW())
             AND COALESCE(profile_data->>'invitationFollowupPaused','false') <> 'true'
         RETURNING id`,
@@ -114,7 +125,7 @@ export async function runBrokerInvitationReminders(): Promise<{
       const delivered = await sendBrokerInvitationReminderEmail(user.email, token, day, name);
       await pool.query(
         REMINDER_OUTCOME_SQL,
-        [user.id, day, delivered.success ? "sent" : "failed", delivered.error || "", delivered.success, delivered.providerMessageId || null],
+        [user.id, day, delivered.success ? "sent" : "failed", !delivered.success ? UNCERTAIN_REMINDER_PREFIX + " " + (delivered.error || "Proveedor no confirmó") : "", delivered.success, delivered.providerMessageId || null],
       );
       if (delivered.success) output.sent++;
       else output.failed++;

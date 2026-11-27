@@ -16,6 +16,7 @@ test("Resend delivery audit handles duplicate and out-of-order events", async ()
         (user_id varchar,reminder_day smallint,status varchar,provider_message_id varchar,
          claimed_at timestamp default now(),updated_at timestamp default now(),sent_at timestamp,last_error text,
          PRIMARY KEY(user_id,reminder_day));
+      CREATE TABLE public.commercial_mail_dispatches(plan_id varchar,user_id varchar,step_day integer,status varchar,recipient_email varchar,provider_message_id varchar,claimed_at timestamptz,sent_at timestamptz);
       CREATE TABLE public.notifications (id varchar PRIMARY KEY,type varchar,data jsonb,created_at timestamp default now());
       CREATE TABLE public.resend_delivery_events
         (event_id varchar PRIMARY KEY,provider_message_id varchar,event_type varchar,
@@ -54,8 +55,13 @@ test("Resend delivery audit handles duplicate and out-of-order events", async ()
     assert.equal(duplicate.affectedRows, 0, "replayed event does not insert a second row");
     const count = await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM public.resend_delivery_events");
     assert.equal(count.rows[0].count, 5);
+    await pg.exec("INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at) VALUES ('event-open','email-invitation','email.opened',NOW()),('event-click','email-invitation','email.clicked',NOW())");
+    await pg.exec("INSERT INTO public.commercial_mail_dispatches VALUES('p','broker-a',1,'sent','broker@example.test','email-commercial',now(),now()); INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at) VALUES ('event-commercial','email-commercial','email.delivered',now())");
     const rows = (await pg.query<any>(EMAIL_DELIVERY_AUDIT_SQL)).rows;
-    assert.equal(rows.length, 6);
+    assert.equal(rows.find(x=>x.kind==="commercial")?.eventType,"email.delivered");
+    assert.equal(rows.find(x=>x.kind==="invitation")?.opened,true);
+    assert.equal(rows.find(x=>x.kind==="invitation")?.clicked,true);
+    assert.equal(rows.length, 7);
     assert.equal(rows.find(x => x.kind === "welcome")?.eventType, "email.bounced");
     assert.equal(rows.find(x => x.kind === "reminder" && x.reminderDay === 15)?.eventType, null);
     assert.equal(rows.find(x => x.kind === "reminder" && x.reminderDay === 3)?.dispatchStatus, "uncertain");

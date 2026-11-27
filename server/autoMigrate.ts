@@ -1,3 +1,4 @@
+import { COMMERCIAL_MAIL_DRAFT_SCHEMA_SQL } from "./commercialMailDraftSchema";
 import { PROSPECT_INTAKE_SCHEMA_SQL } from "./prospectIntakeSchema";
 import { PROSPECT_AUTO_MATCHING_SCHEMA_SQL } from "./prospectAutoMatchingSchema";
 import { BROKER_INVITATION_DAY_15_MIGRATION_SQL } from "./brokerInvitationReminderSchema";
@@ -939,6 +940,7 @@ export async function runAutoMigration(): Promise<void> {
         END LOOP;
       END $email_roles$;
     `);
+    await client.query(COMMERCIAL_MAIL_DRAFT_SCHEMA_SQL);
     console.log("[AutoMigrate] Resend signed delivery audit verified");
 
     // INV-FOLLOWUP: one row per user/day prevents duplicate automatic reminders,

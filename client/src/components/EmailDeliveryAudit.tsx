@@ -10,10 +10,10 @@ import { MailCheck, RefreshCw, Search } from "lucide-react";
 type DeliveryRow = {
   id: string; userId: string | null; email: string | null;
   firstName: string | null; lastName: string | null;
-  role: string | null; kind: "welcome" | "reminder" | "invitation" | "reinvitation" | "provider_only";
+  role: string | null; kind: "welcome" | "reminder" | "invitation" | "reinvitation" | "commercial" | "provider_only";
   reminderDay: number | null; dispatchStatus: string;
   providerMessageId: string | null; eventType: string | null;
-  createdAt: string; sentAt: string | null; eventAt: string | null;
+  createdAt: string; sentAt: string | null; eventAt: string | null; opened?:boolean; clicked?:boolean;
 };
 type DeliveryResponse = { records: DeliveryRow[]; limit: number; providerConnected: boolean };
 
@@ -28,6 +28,7 @@ function kind(row: DeliveryRow) {
   if (row.kind === "welcome") return "Bienvenida";
   if (row.kind === "invitation") return "Invitación";
   if (row.kind === "reinvitation") return "Reinvitación";
+  if (row.kind === "commercial") return "Campaña comercial · día " + (row.reminderDay || "?");
   if (row.kind === "provider_only") return "Evento de Resend sin vinculación";
   return "Recordatorio · día " + (row.reminderDay || "?");
 }
@@ -81,7 +82,7 @@ export default function EmailDeliveryAudit() {
         <CardDescription className="text-xs">
           Distingue cuándo Resend acepta el envío y cuándo el servidor de destino confirma la entrega.
           Incluye reinvitaciones y eventos del webhook sin registro de envío asociado.
-          La entrega no significa que el destinatario leyó el mensaje.
+          La entrega no significa que el destinatario leyó el mensaje. Aperturas y clics son señales registradas, no lectura humana confirmada.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -102,6 +103,7 @@ export default function EmailDeliveryAudit() {
             <option value="invitation">Invitaciones</option>
             <option value="reinvitation">Reinvitaciones</option>
             <option value="reminder">Recordatorios</option>
+            <option value="commercial">Campañas comerciales</option>
             <option value="provider_only">Sin vinculación local</option>
           </select>
           <Button size="sm" variant="outline" onClick={() => void data.refetch()} disabled={data.isFetching}>
@@ -125,6 +127,7 @@ export default function EmailDeliveryAudit() {
                 </div>
                 <p className="text-muted-foreground">{row.email || "Destinatario no almacenado"} · {row.role === "master_broker" ? "Master Broker" : row.role === "broker" ? "Broker" : "Sin cuenta vinculada"}</p>
                 {row.kind === "provider_only" && <p className="font-mono break-all">ID Resend: {row.providerMessageId}</p>}
+                {(row.opened||row.clicked)&&<p className="text-muted-foreground">{row.opened?"Apertura registrada":""}{row.opened&&row.clicked?" · ":""}{row.clicked?"Clic registrado":""}</p>}
                 <p>Registro: {date(row.createdAt)}{row.eventAt ? " · Último resultado: " + date(row.eventAt) : ""}</p>
                 {row.dispatchStatus === "failed" && !row.eventType && <p className="text-destructive">
                   El intento de envío no quedó confirmado; revisar el detalle técnico antes de reenviar.
