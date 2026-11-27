@@ -155,7 +155,7 @@ export default function Documents() {
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="cn-kpi-grid grid grid-cols-2 sm:grid-cols-4 gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-2xs animate-pulse">
                   <div className="h-3 w-16 bg-slate-200 rounded mb-2.5"></div>
@@ -200,7 +200,7 @@ export default function Documents() {
         <div className="max-w-7xl mx-auto space-y-5">
 
           {/* Institutional Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="cn-kpi-grid grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Total */}
             <div 
               onClick={() => setFilterStatus("all")}
