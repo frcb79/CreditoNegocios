@@ -203,7 +203,7 @@
   .cn-workspace .cn-dashboard-flow { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 }
 @container cn-content (max-width: 480px) {
-  .cn-workspace .cn-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cn-workspace .cn-kpi-grid.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cn-workspace .cn-header-inner > div:first-child { flex-basis: 100%; }
   .cn-workspace .cn-header-inner > div:last-child { justify-content: flex-start; }
 }
