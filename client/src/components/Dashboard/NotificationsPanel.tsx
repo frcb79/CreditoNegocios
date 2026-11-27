@@ -52,8 +52,8 @@ export default function NotificationsPanel() {
   return (
     <Card className="border border-border/70 bg-card shadow-2xs" data-testid="notifications-panel-card">
       <CardHeader className="p-4 pb-3 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <CardTitle className="text-sm font-semibold text-foreground tracking-tight leading-none">
               Requieren atención
             </CardTitle>
@@ -123,7 +123,7 @@ export default function NotificationsPanel() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                      <div className="flex items-center justify-between flex-wrap gap-1 mb-0.5">
                         <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.2 rounded border font-medium ${cfg.badgeClass}`}>
                           {cfg.badge}
                         </span>
@@ -135,7 +135,7 @@ export default function NotificationsPanel() {
                         </span>
                       </div>
 
-                      <p className={`text-xs text-foreground truncate ${!notification.isRead ? 'font-semibold' : 'font-medium'}`}>
+                      <p className={`text-xs text-foreground break-words ${!notification.isRead ? 'font-semibold' : 'font-medium'}`}>
                         {notification.title}
                       </p>
                       <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
