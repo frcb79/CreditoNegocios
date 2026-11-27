@@ -107,7 +107,7 @@ export default function ReGestion() {
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-24 bg-white border border-slate-200/80 rounded-xl p-4 animate-pulse space-y-2">
                   <div className="h-4 bg-slate-100 rounded w-1/2"></div>
@@ -156,7 +156,7 @@ export default function ReGestion() {
           </div>
 
           {/* Summary KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-slate-200/80 rounded-xl p-4 sm:p-5 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-slate-500 text-xs font-medium">Total Oportunidades</p>
