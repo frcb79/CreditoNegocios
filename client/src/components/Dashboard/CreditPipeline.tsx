@@ -41,7 +41,7 @@ export default function CreditPipeline() {
           <CardTitle className="text-sm font-semibold">Pipeline de Créditos</CardTitle>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-5 gap-2">
+          <div className="cn-pipeline-grid grid grid-cols-5 gap-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full rounded-md" />
             ))}
@@ -77,8 +77,8 @@ export default function CreditPipeline() {
   return (
     <Card className="border border-border/70 bg-card shadow-2xs" data-testid="credit-pipeline-card">
       <CardHeader className="p-4 pb-3 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
               Pipeline de Créditos
             </CardTitle>
@@ -100,7 +100,7 @@ export default function CreditPipeline() {
 
       <CardContent className="p-4 space-y-5">
         {/* Pipeline Stages: Sobrio, Horizontal, Bancario */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" data-testid="pipeline-stages-grid">
+        <div className="cn-pipeline-grid grid grid-cols-2 sm:grid-cols-5 gap-2" data-testid="pipeline-stages-grid">
           {pipelineStages.map((stage, index) => {
             const hasItems = stage.count > 0;
             return (
@@ -122,7 +122,7 @@ export default function CreditPipeline() {
                   {stage.count}
                 </div>
                 <div
-                  className="text-[11px] font-medium text-muted-foreground mt-0.5 truncate"
+                  className="text-[11px] font-medium text-muted-foreground mt-0.5 break-words"
                   data-testid={`pipeline-label-${index}`}
                 >
                   {stage.label}
@@ -175,7 +175,7 @@ export default function CreditPipeline() {
                       </div>
                       <div className="min-w-0">
                         <p
-                          className="font-medium text-foreground text-xs truncate max-w-[200px] sm:max-w-[320px]"
+                          className="font-medium text-foreground text-xs break-words max-w-[200px] sm:max-w-[320px]"
                           data-testid={`case-client-${creditCase.id}`}
                         >
                           {creditCase.clientName}
@@ -189,7 +189,7 @@ export default function CreditPipeline() {
                       </div>
                     </div>
 
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right min-w-0 max-w-full">
                       <Badge
                         className={`text-[10px] px-2 py-0.5 font-medium border shadow-none ${getStatusBadgeClass(creditCase.status)}`}
                         data-testid={`case-status-${creditCase.id}`}

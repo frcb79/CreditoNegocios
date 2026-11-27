@@ -276,12 +276,12 @@ export default function Reports() {
           <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Métricas 1: Créditos con dispersión confirmada */}
             <Card className="border border-border shadow-sm bg-card">
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Créditos con dispersión confirmada
                   </p>
-                  <p className="text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-total-credits">
+                  <p className="cn-kpi-value text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-total-credits">
                     {reportData.totalCredits}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -296,12 +296,12 @@ export default function Reports() {
 
             {/* Métricas 2: Volumen Total */}
             <Card className="border border-border shadow-sm bg-card">
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Volumen Total
                   </p>
-                  <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1" data-testid="metric-total-amount">
+                  <p className="cn-kpi-value text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1" data-testid="metric-total-amount">
                     ${reportData.totalAmount.toLocaleString('es-MX')}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -316,12 +316,12 @@ export default function Reports() {
 
             {/* Métricas 3: Ticket Promedio */}
             <Card className="border border-border shadow-sm bg-card">
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Ticket Promedio
                   </p>
-                  <p className="text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-avg-amount">
+                  <p className="cn-kpi-value text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-avg-amount">
                     ${reportData.avgCreditAmount.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -336,12 +336,12 @@ export default function Reports() {
 
             {/* Métricas 4: Comisiones Generadas */}
             <Card className="border border-border shadow-sm bg-card">
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Comisiones Generadas
                   </p>
-                  <p className="text-2xl font-bold font-mono text-purple-700 dark:text-purple-300 mt-1" data-testid="metric-total-commissions">
+                  <p className="cn-kpi-value text-2xl font-bold font-mono text-purple-700 dark:text-purple-300 mt-1" data-testid="metric-total-commissions">
                     ${totalCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">

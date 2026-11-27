@@ -240,3 +240,29 @@
   .cn-workspace .cn-client-table td:first-child > div > div { flex-wrap: wrap; }
   .cn-workspace :is(.cn-credit-table, .cn-client-table) td:last-child button { min-height: 40px; min-width: 40px; }
 }
+
+/* Desktop follow-up: fit content inside its own panel, not the viewport. */
+@media (min-width: 768px) {
+  .cn-workspace .cn-card > * { min-width: 0; max-width: 100%; }
+  .cn-workspace :is(.cn-card, .cn-kpi-grid) :where(p, h2, h3, h4, label, .break-words) { overflow-wrap: anywhere; }
+  .cn-workspace :is(.cn-card, .cn-kpi-grid) :where(input, select, textarea) { min-width: 0; max-width: 100%; }
+  .cn-workspace .cn-kpi-grid > * { overflow-wrap: anywhere; }
+  .cn-workspace .cn-kpi-grid > .cn-card > .flex { gap: .5rem; }
+  .cn-workspace .cn-kpi-grid > .cn-card > .flex > :first-child { min-width: 0; }
+  .cn-workspace .cn-pipeline-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr)); }
+  .cn-workspace .cn-pipeline-grid > * { min-width: 0; overflow-wrap: anywhere; }
+  .cn-workspace .cn-dashboard-flow > div { container-type: inline-size; }
+  .cn-workspace .cn-tabs-fit { height: auto; min-width: 0; max-width: 100%; }
+  .cn-workspace .cn-tabs-fit > [role="tab"] { min-width: 0; white-space: normal; overflow-wrap: anywhere; height: auto; }
+  .cn-workspace .cn-tabs-fit > [role="tab"] svg { flex-shrink: 0; }
+  .cn-workspace .cn-client-toolbar > * { max-width: 100%; }
+}
+@container cn-content (min-width: 1041px) and (max-width: 1250px) {
+  .cn-workspace .cn-kpi-grid.grid-cols-2.lg\\:grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container cn-content (min-width: 1251px) {
+  .cn-workspace .cn-kpi-grid.grid-cols-2.lg\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container cn-content (min-width: 1041px) {
+  .cn-workspace .cn-kpi-grid.grid-cols-2.md\\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

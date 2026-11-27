@@ -277,7 +277,7 @@ export default function CommercialResources() {
               ["datos","Mis datos",UserRound],["sugerencias","Sugerencias",MessageSquareText],
             ] as const).map(([id,label,Icon])=><button type="button" key={id}
               role="tab" aria-selected={activeTab===id} data-testid={"commercial-tab-"+id}
-              className={"flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-colors "+
+              className={"min-w-0 flex flex-wrap items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-colors "+
                 (activeTab===id?"bg-blue-800 text-white shadow-sm":"bg-white text-slate-700 hover:bg-blue-50")}
               onClick={()=>setActiveTab(id)}><Icon className="h-4 w-4"/>{label}</button>)}
           </div>}
@@ -289,8 +289,8 @@ export default function CommercialResources() {
               Tu nombre y WhatsApp son obligatorios. No se agrega logo ni avatar del asesor; se conserva el logo oficial de Crédito Negocios. {COMMERCIAL_DISCLAIMER}
             </p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-            <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
+          <div className="cn-adaptive-grid grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            <section className="min-w-0 rounded-xl border bg-card p-4 sm:p-5 space-y-4">
               <h2 className="font-bold flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Campañas disponibles</h2>
               {!isLoading && !error && (
                 <CommercialLibraryToolbar templates={templates} filters={libraryFilters}

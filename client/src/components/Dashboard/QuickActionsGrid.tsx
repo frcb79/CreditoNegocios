@@ -36,8 +36,8 @@ export default function QuickActionsGrid() {
   return (
     <Card className="border border-border/70 bg-card/60 shadow-2xs" data-testid="upcoming-features-card">
       <CardHeader className="p-4 pb-2 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
               Lo que viene en Crédito Negocios
             </CardTitle>
@@ -52,7 +52,7 @@ export default function QuickActionsGrid() {
       </CardHeader>
 
       <CardContent className="p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {upcomingFeatures.map((feature, index) => (
             <div
               key={index}
@@ -60,7 +60,7 @@ export default function QuickActionsGrid() {
               data-testid={`quick-action-${index}`}
             >
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                   <div className={`w-7 h-7 rounded flex items-center justify-center flex-shrink-0 ${feature.bgColor}`}>
                     <i className={`${feature.icon} ${feature.iconColor} text-xs`}></i>
                   </div>
