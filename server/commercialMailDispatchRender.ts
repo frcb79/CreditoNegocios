@@ -1,5 +1,6 @@
 import {createHash,createHmac,timingSafeEqual} from "node:crypto";
-import {commercialMailPreview,type CommercialMailDraft} from "../shared/commercialMailDrafts";
+import type {CommercialMailDraft} from "../shared/commercialMailDrafts";
+import {renderCommercialMailLayout} from "../shared/commercialMailLayout";
 export function commercialMailDispatchSettings(env:NodeJS.ProcessEnv){
   const base=env.FRONTEND_BASE_URL?.replace(/\/$/,"");
   const secret=env.COMMERCIAL_MAIL_UNSUBSCRIBE_SECRET||"";
@@ -20,11 +21,6 @@ export function readCommercialUnsubscribeToken(token:string,secret:string):{id:s
   if(a.length!==b.length||!timingSafeEqual(a,b))return null;
   try{const [id,hash]=JSON.parse(Buffer.from(value,"base64url").toString("utf8"));return typeof id==="string"&&id.length<=100&&typeof hash==="string"&&/^[a-f0-9]{64}$/.test(hash)?{id,hash}:null;}catch{return null;}
 }
-const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
 export function renderCommercialMail(step:CommercialMailDraft["steps"][number],name:string,base:string,unsubscribe:string){
-  if(step.cta==="activate")throw Error("Invitation activation is not a commercial dispatch");
-  const subject=commercialMailPreview(step.subject,name||"Asesor").replace(/[\r\n]/g," ");
-  const body=commercialMailPreview(step.body,name||"Asesor");
-  const cta=step.cta==="login"?'<p><a style="display:inline-block;background:#05478a;color:white;padding:12px 20px;border-radius:6px;text-decoration:none" href="'+esc(base)+'/">Entrar a la plataforma</a></p>':step.cta==="reply"?'<p>Responde directamente a este correo.</p>':"";
-  return {subject,text:body+(step.cta==="login"?"\n\n"+base+"/":step.cta==="reply"?"\n\nResponde directamente a este correo.":"")+"\n\nDejar de recibir correos comerciales: "+unsubscribe,html:'<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#172e49"><div style="background:#05478a;color:white;padding:20px;font-weight:bold">CRÉDITO NEGOCIOS</div><div style="padding:24px"><div style="white-space:pre-wrap">'+esc(body)+'</div>'+cta+'</div><p style="font-size:12px;padding:16px;color:#475569"><a href="'+esc(unsubscribe)+'">Dejar de recibir correos comerciales</a></p></div>'};
+  return renderCommercialMailLayout(step,{name,test:false,base,unsubscribe});
 }

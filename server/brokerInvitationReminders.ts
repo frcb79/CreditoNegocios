@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { pool } from "./db";
 import { storage } from "./storage";
 import { sendBrokerInvitationReminderEmail } from "./emailService";
+import { COMMERCIAL_MAIL_RECIPIENTS_SQL } from "./commercialMailRecipients";
 
 /** The delivery may have happened even if updating its audit row failed. Never auto-retry it. */
 export const UNCERTAIN_REMINDER_PREFIX = "Estado de envío no confirmado:";
@@ -48,6 +49,26 @@ export function selectReminderDay(invitedAt: Date, now = new Date(), extended = 
   return null; // no late catch-up after the final four-day window
 }
 
+/** Extension rollout requires an explicit batch of at most 10 account IDs.
+ * A missing, malformed or oversized batch fails closed; legacy reminders are unchanged. */
+export function invitationExtensionBatch(env: NodeJS.ProcessEnv): Set<string> {
+  if (env.COMMERCIAL_INVITATION_EXTENSION_ENABLED !== "true") return new Set();
+  const ids = (env.COMMERCIAL_INVITATION_EXTENSION_USER_IDS || "").split(",").map(s=>s.trim()).filter(Boolean);
+  if (!ids.length || ids.length > 10 || ids.some(id=>!/^[-_A-Za-z0-9]{1,100}$/.test(id))) return new Set();
+  return new Set(ids);
+}
+
+async function extendedRecipientEligible(id: string, email: string) {
+  const { rows } = await pool.query(COMMERCIAL_MAIL_RECIPIENTS_SQL, ["pending_registration"]);
+  if (rows.length > 500 || !rows.some(row=>row.id===id && row.email===email)) return false;
+  const recentOrUncertain = await pool.query(`SELECT 1 FROM public.broker_invitation_reminder_events
+    WHERE user_id=$1 AND (status='claimed' OR
+      (status='failed' AND (last_error LIKE 'Estado de envío no confirmado:%' OR last_error ILIKE '%inconsistent types deduced for parameter $3%')) OR
+      (status='sent' AND sent_at>NOW()-INTERVAL '24 hours'))
+    LIMIT 1`, [id]);
+  return !recentOrUncertain.rowCount;
+}
+
 export async function runBrokerInvitationReminders(): Promise<{
   due: number; sent: number; failed: number; skipped: number;
 }> {
@@ -55,6 +76,7 @@ export async function runBrokerInvitationReminders(): Promise<{
   if (process.env.NODE_ENV === "test" ||
       process.env.RAILWAY_ENVIRONMENT_NAME !== "production")
     return { due: 0, sent: 0, failed: 0, skipped: 0 };
+  const extensionBatch = invitationExtensionBatch(process.env);
   const { rows } = await pool.query<{
     id: string; email: string; first_name: string | null;
     last_name: string | null; invited_at: Date;
@@ -74,11 +96,14 @@ export async function runBrokerInvitationReminders(): Promise<{
        AND coalesce(u.profile_data->>'invitationFollowupPaused', 'false') <> 'true'
        AND fi.invited_at <= NOW() - INTERVAL '3 days'
        AND (NOT $1::boolean OR fi.invited_at > NOW() - INTERVAL '43 days')
-     ORDER BY fi.invited_at ASC LIMIT 250`,[process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true"]);
+     ORDER BY fi.invited_at ASC LIMIT 250`,[extensionBatch.size > 0]);
   const output = { due: 0, sent: 0, failed: 0, skipped: 0 };
   for (const user of rows) {
-    const day = selectReminderDay(new Date(user.invited_at), new Date(), process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true");
+    const extensionRequested = process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true";
+    const day = selectReminderDay(new Date(user.invited_at), new Date(), extensionRequested);
     if (!day) continue;
+    // Do not fall back to another day for an unapproved extended recipient.
+    if (day >= 25 && (!extensionBatch.has(user.id) || !await extendedRecipientEligible(user.id,user.email))) continue;
     // Uniqueness in Postgres is the cross-worker/idempotency boundary.
     const claim = await pool.query(
       REMINDER_CLAIM_SQL,
@@ -90,12 +115,20 @@ export async function runBrokerInvitationReminders(): Promise<{
     try {
       const refreshed = await storage.getUser(user.id);
       if (!refreshed || refreshed.password || refreshed.isActive === false ||
-          refreshed.status !== "active" || ["expired","suspended"].includes(refreshed.accessStatus) ||
+          refreshed.email !== user.email || refreshed.status !== "active" || ["expired","suspended"].includes(refreshed.accessStatus) ||
           (refreshed.profileData as any)?.commercialMailOptOut === true ||
           (refreshed.profileData as any)?.invitationFollowupPaused === true) {
         await pool.query(
           "UPDATE public.broker_invitation_reminder_events SET status='skipped', updated_at=NOW() WHERE user_id=$1 AND reminder_day=$2",
           [user.id, day]);
+        output.skipped++;
+        continue;
+      }
+      // Re-check suppressions and the explicit batch immediately before token mutation.
+      const freshCandidates = day >= 25 ? (await pool.query(COMMERCIAL_MAIL_RECIPIENTS_SQL, ["pending_registration"])).rows : [];
+      if (day >= 25 && (!invitationExtensionBatch(process.env).has(user.id) ||
+          freshCandidates.length>500 || !freshCandidates.some(row=>row.id===user.id&&row.email===user.email))) {
+        await pool.query("UPDATE public.broker_invitation_reminder_events SET status='skipped', updated_at=NOW() WHERE user_id=$1 AND reminder_day=$2",[user.id,day]);
         output.skipped++;
         continue;
       }

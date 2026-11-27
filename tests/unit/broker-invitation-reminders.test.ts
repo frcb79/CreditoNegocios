@@ -1,11 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { selectReminderDay } from "../../server/brokerInvitationReminders";
+import { selectReminderDay, invitationExtensionBatch } from "../../server/brokerInvitationReminders";
 import { buildBrokerInvitationReminderEmail } from "../../server/emailService";
 
 describe("Broker invitation follow-up cadence", () => {
   const now = new Date("2026-10-28T15:00:00.000Z");
   const daysAgo = (days: number) => new Date(now.getTime() - days * 86400000);
+  it("requires an explicit bounded extension batch",()=>{
+    expect(invitationExtensionBatch({COMMERCIAL_INVITATION_EXTENSION_ENABLED:"true"}).size).toBe(0);
+    expect(invitationExtensionBatch({COMMERCIAL_INVITATION_EXTENSION_USER_IDS:"a,b"}).size).toBe(0);
+    expect([...invitationExtensionBatch({COMMERCIAL_INVITATION_EXTENSION_ENABLED:"true",COMMERCIAL_INVITATION_EXTENSION_USER_IDS:"a,b"})]).toEqual(["a","b"]);
+    expect(invitationExtensionBatch({COMMERCIAL_INVITATION_EXTENSION_ENABLED:"true",COMMERCIAL_INVITATION_EXTENSION_USER_IDS:Array.from({length:11},(_,i)=>"u"+i).join(",")}).size).toBe(0);
+    expect(invitationExtensionBatch({COMMERCIAL_INVITATION_EXTENSION_ENABLED:"true",COMMERCIAL_INVITATION_EXTENSION_USER_IDS:"a,invalid id"}).size).toBe(0);
+  });
   it("does not send a reminder early", () => {
     expect(selectReminderDay(daysAgo(2), now)).toBeNull();
   });
