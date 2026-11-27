@@ -355,7 +355,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[750px] text-left border-collapse">
+          <table className="cn-client-table w-full min-w-[750px] text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                 <th className="py-3 px-4">Cliente / Razón Social</th>
@@ -394,7 +394,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     data-testid={`client-${client.id}`}
                   >
                     {/* 1. Cliente / Razón Social */}
-                    <td className="py-3 px-4">
+                    <td data-label="Cliente / Razón Social" className="py-3 px-4">
                       <div className="flex flex-col min-w-0 max-w-xs sm:max-w-sm">
                         <div className="flex items-center gap-1.5">
                           <span 
@@ -453,7 +453,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 2. Tipo PF / PM */}
-                    <td className="py-3 px-3 text-center">
+                    <td data-label="Tipo" className="py-3 px-3 text-center">
                       <span 
                         data-testid={`client-type-${client.id}`}
                         title={typeInfo.title}
@@ -468,14 +468,14 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 2.5 Relación Comercial */}
-                    <td className="py-3 px-3 text-center">
+                    <td data-label="Relación comercial" className="py-3 px-3 text-center">
                       <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap", relBadge.cls)}>
                         {relBadge.label}
                       </span>
                     </td>
 
                     {/* 3. Contacto */}
-                    <td className="py-3 px-4">
+                    <td data-label="Contacto" className="py-3 px-4">
                       <div className="flex flex-col text-xs text-slate-700 space-y-0.5 max-w-[200px]">
                         {client.phone ? (
                           <div className="flex items-center gap-1.5 text-slate-700">
@@ -496,7 +496,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 4. Operaciones activas */}
-                    <td className="py-3 px-3 text-center">
+                    <td data-label="Operaciones" className="py-3 px-3 text-center">
                       {activeOps > 0 ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                           {activeOps} {activeOps === 1 ? 'activa' : 'activas'}
@@ -507,7 +507,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 5. Originador */}
-                    <td className="py-3 px-4">
+                    <td data-label="Originador" className="py-3 px-4">
                       <div className="flex flex-col text-xs max-w-[160px]">
                         {(client as any).broker ? (
                           <span 
@@ -531,7 +531,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 6. Última actividad */}
-                    <td className="py-3 px-3 text-center">
+                    <td data-label="Última actividad" className="py-3 px-3 text-center">
                       <span 
                         className="text-xs text-slate-500 whitespace-nowrap"
                         title={lastActivityDate ? format(new Date(lastActivityDate), "dd 'de' MMMM, yyyy HH:mm", { locale: es }) : undefined}
@@ -541,7 +541,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     </td>
 
                     {/* 7. Acciones */}
-                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td data-label="Acciones" className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="outline"
