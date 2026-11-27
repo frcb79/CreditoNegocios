@@ -649,6 +649,7 @@ export default function CreditList() {
                   <SelectItem value="winner_selected">Ganador Seleccionado</SelectItem>
                   <SelectItem value="dispersed">Dispersado</SelectItem>
                   <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="historical_recorded">Crédito histórico registrado</SelectItem>
                   <SelectItem value="completed">Completado</SelectItem>
                   <SelectItem value="defaulted">En Mora</SelectItem>
                 </SelectContent>
@@ -1488,6 +1489,7 @@ export default function CreditList() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Estado del Crédito</p>
+                        {selectedCreditItem.status==="historical_recorded"&&<p className="text-xs text-muted-foreground mb-1">Fecha real: {selectedCreditItem.rawCredit?.startDate||"No disponible"}. Registro de seguimiento, sin comisión automática.</p>}
                         {(() => {
                           const config = creditStatusConfig[selectedCreditItem.status as keyof typeof creditStatusConfig];
                           return (

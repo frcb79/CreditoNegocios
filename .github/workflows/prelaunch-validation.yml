@@ -22,6 +22,7 @@ on:
       - 'fix/backoffice-delegated-capture-*'
       - 'fix/mobile-commercial-capture-*'
       - 'fix/backoffice-report-integrity-*'
+      - 'fix/backoffice-historical-intake-*'
       - 'feat/commercial-mail-manager-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'
@@ -196,6 +197,7 @@ jobs:
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts
             tests/unit/leasing-postlaunch.test.ts
+            tests/unit/historical-credit-intake.test.ts
             tests/unit/institution-proposal-presentation.test.ts
           )
           selected=()
@@ -260,6 +262,7 @@ jobs:
             tests/integration/postgres-commercial-config-atomic.test.ts
             tests/integration/postgres-network-rates-atomic.test.ts
             tests/integration/postgres-staging-schema-repair.test.ts
+            tests/integration/postgres-historical-credit-intake.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do
