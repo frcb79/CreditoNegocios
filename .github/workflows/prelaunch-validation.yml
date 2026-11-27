@@ -22,6 +22,8 @@ on:
       - 'fix/backoffice-historical-intake-*'
       - 'fix/backoffice-report-integrity-*'
       - 'fix/backoffice-delegated-capture-*'
+      - 'fix/mobile-commercial-capture-*'
+      - 'feat/commercial-mail-manager-*'
       - 'sync/staging-*'
       - 'fix/first-party-api-session-*'
       - 'feat/commercial-resources-bulk-publish-*'
