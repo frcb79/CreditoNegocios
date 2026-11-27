@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { confirmedReportEvents,inReportPeriod,reportCommissionTotal } from "@shared/operationalReportMetrics";
+import { getCreditStatusLabel } from "@/lib/statusConfig";
 import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
@@ -17,7 +20,7 @@ interface ReportData {
   totalCredits: number;
   totalAmount: number;
   avgCreditAmount: number;
-  conversionRate: number;
+  clientsWithConfirmedDisbursement: number;
   monthlyTrend: Array<{ month: string; credits: number; amount: number }>;
   statusDistribution: Array<{ status: string; count: number }>;
   topClients: Array<{ name: string; totalAmount: number; creditsCount: number }>;
@@ -25,21 +28,21 @@ interface ReportData {
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState<string>("current_month");
-  const [reportType, setReportType] = useState<string>("overview");
+  const {user}=useAuth();
 
-  const { data: credits, isLoading: creditsLoading } = useQuery<Credit[]>({
+  const { data: credits, isLoading: creditsLoading, isError: creditsError } = useQuery<Credit[]>({
     queryKey: ["/api/credits"],
   });
 
-  const { data: clients } = useQuery<Client[]>({
+  const { data: clients, isLoading: clientsLoading, isError: clientsError } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
 
-  const { data: commissions, isLoading: commissionsLoading } = useQuery<Commission[]>({
+  const { data: commissions, isLoading: commissionsLoading, isError: commissionsError } = useQuery<Array<Commission & {payoutAmount?:number}>>({
     queryKey: ["/api/commissions"],
   });
 
-  const isLoading = creditsLoading || commissionsLoading;
+  const isLoading = creditsLoading || commissionsLoading || clientsLoading;
 
   const getDateRangeFilter = () => {
     const now = new Date();
@@ -58,106 +61,46 @@ export default function Reports() {
     }
   };
 
-  const generateReportData = (): ReportData => {
-    if (!credits || !clients) {
-      return {
-        totalCredits: 0,
-        totalAmount: 0,
-        avgCreditAmount: 0,
-        conversionRate: 0,
-        monthlyTrend: [],
-        statusDistribution: [],
-        topClients: [],
-      };
+  const period=getDateRangeFilter();
+  const events=confirmedReportEvents(credits||[],period);
+  const generateReportData=():ReportData=>{
+    const creditIds=new Set(events.map(e=>e.creditId));
+    const totalAmount=events.reduce((sum,e)=>sum+e.amount,0);
+    const clientTotals=new Map<string,{totalAmount:number;ids:Set<string>}>();
+    const statuses=new Map<string,number>();
+    for(const credit of credits||[]){
+      if(credit.status==="historical_recorded" || (credit.finalProposal as any)?.historicalRecord || !inReportPeriod(credit.createdAt,period))continue;
+      const status=getCreditStatusLabel(credit.status);
+      statuses.set(status,(statuses.get(status)||0)+1);
     }
-
-    const { start, end } = getDateRangeFilter();
-    const filteredCredits = credits.filter(credit => {
-      const creditDate = new Date(credit.createdAt!);
-      return creditDate >= start && creditDate <= end;
-    });
-
-    const totalAmount = filteredCredits.reduce((sum, credit) => sum + parseFloat(credit.amount), 0);
-    
-    // Status distribution
-    const statusCounts: Record<string, number> = {};
-    filteredCredits.forEach(credit => {
-      statusCounts[credit.status] = (statusCounts[credit.status] || 0) + 1;
-    });
-    
-    const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
-      status,
-      count,
-    }));
-
-    // Top clients by total amount
-    const clientTotals: Record<string, { totalAmount: number; creditsCount: number }> = {};
-    filteredCredits.forEach(credit => {
-      if (!clientTotals[credit.clientId]) {
-        clientTotals[credit.clientId] = { totalAmount: 0, creditsCount: 0 };
-      }
-      clientTotals[credit.clientId].totalAmount += parseFloat(credit.amount);
-      clientTotals[credit.clientId].creditsCount += 1;
-    });
-
-    const topClients = Object.entries(clientTotals)
-      .map(([clientId, data]) => {
-        const client = clients.find(c => c.id === clientId);
-        const name = client 
-          ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`)
-          : `Cliente ${clientId.slice(-8)}`;
-        return {
-          name: name || 'Cliente sin nombre',
-          ...data,
-        };
-      })
-      .sort((a, b) => b.totalAmount - a.totalAmount)
-      .slice(0, 10);
-
-    // Monthly trend (last 6 months)
-    const monthlyData: Record<string, { credits: number; amount: number }> = {};
-    for (let i = 5; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const monthKey = date.toLocaleDateString('es-MX', { month: 'short', year: 'numeric' });
-      monthlyData[monthKey] = { credits: 0, amount: 0 };
+    for(const e of events){
+      const c=clientTotals.get(e.clientId)||{totalAmount:0,ids:new Set<string>()};
+      c.totalAmount+=e.amount;c.ids.add(e.creditId);clientTotals.set(e.clientId,c);
     }
-
-    filteredCredits.forEach(credit => {
-      const creditDate = new Date(credit.createdAt!);
-      const monthKey = creditDate.toLocaleDateString('es-MX', { month: 'short', year: 'numeric' });
-      if (monthlyData[monthKey]) {
-        monthlyData[monthKey].credits += 1;
-        monthlyData[monthKey].amount += parseFloat(credit.amount);
-      }
-    });
-
-    const monthlyTrend = Object.entries(monthlyData).map(([month, data]) => ({
-      month,
-      ...data,
-    }));
-
-    return {
-      totalCredits: filteredCredits.length,
-      totalAmount,
-      avgCreditAmount: filteredCredits.length > 0 ? totalAmount / filteredCredits.length : 0,
-      conversionRate: clients.length > 0 ? (filteredCredits.length / clients.length) * 100 : 0,
-      monthlyTrend,
-      statusDistribution,
-      topClients,
-    };
+    const topClients=Array.from(clientTotals.entries()).map(([id,c])=>{
+      const client=clients?.find(x=>x.id===id);
+      const name=client?(client.type==="persona_moral"?client.businessName:[client.firstName,client.lastName].filter(Boolean).join(" ")):null;
+      return {name:name||"Cliente "+id.slice(-8),totalAmount:c.totalAmount,creditsCount:c.ids.size};
+    }).sort((a,b)=>b.totalAmount-a.totalAmount).slice(0,10);
+    const monthKey=(d:Date)=>d.toLocaleDateString("es-MX",{month:"short",year:"numeric"});
+    const monthly=new Map<string,{ids:Set<string>;amount:number}>();
+    const cursor=startOfMonth(period.start);
+    while(cursor<=period.end){monthly.set(monthKey(cursor),{ids:new Set<string>(),amount:0});cursor.setMonth(cursor.getMonth()+1);}
+    for(const e of events){const month=monthly.get(monthKey(e.date));if(month){month.ids.add(e.creditId);month.amount+=e.amount;}}
+    return {totalCredits:creditIds.size,totalAmount,avgCreditAmount:creditIds.size?totalAmount/creditIds.size:0,clientsWithConfirmedDisbursement:clientTotals.size,monthlyTrend:Array.from(monthly.entries()).map(([month,d])=>({month,credits:d.ids.size,amount:d.amount})),statusDistribution:Array.from(statuses.entries()).map(([status,count])=>({status,count})),topClients};
   };
-
-  const reportData = generateReportData();
-  const totalCommissions = commissions?.reduce((sum, c) => sum + parseFloat(c.amount), 0) || 0;
+  const reportData=generateReportData();
+  const totalCommissions=reportCommissionTotal(commissions||[],period,user);
 
   const exportToExcel = () => {
     const data = {
       "Resumen": [
         ["Métrica", "Valor"],
-        ["Créditos Otorgados", reportData.totalCredits],
+        ["Créditos con dispersión confirmada", reportData.totalCredits],
         ["Monto Total", `$${reportData.totalAmount.toFixed(2)}`],
         ["Promedio por Crédito", `$${reportData.avgCreditAmount.toFixed(2)}`],
-        ["Tasa de Conversión", `${reportData.conversionRate.toFixed(2)}%`],
+        ["Clientes con dispersión confirmada", reportData.clientsWithConfirmedDisbursement],
+        ["Comisiones generadas (alcance autorizado)", totalCommissions],
       ],
       "Distribución por Estado": reportData.statusDistribution.map(s => [s.status, s.count]),
       "Clientes Top 10": [
@@ -211,11 +154,11 @@ export default function Reports() {
       y += 8;
 
       writeLine("Resumen", { bold: true, size: 14 });
-      writeLine(`Creditos Otorgados: ${reportData.totalCredits}`);
+      writeLine(`Creditos con dispersion confirmada: ${reportData.totalCredits}`);
       writeLine(`Monto Total: $${reportData.totalAmount.toFixed(2)}`);
       writeLine(`Promedio por Credito: $${reportData.avgCreditAmount.toFixed(2)}`);
-      writeLine(`Tasa de Conversion: ${reportData.conversionRate.toFixed(2)}%`);
-      writeLine(`Comisiones Totales: $${totalCommissions.toFixed(2)}`);
+      writeLine(`Clientes con dispersion confirmada: ${reportData.clientsWithConfirmedDisbursement}`);
+      writeLine(`Comisiones generadas (alcance autorizado): $${totalCommissions.toFixed(2)}`);
       y += 8;
 
       if (reportData.statusDistribution.length > 0) {
@@ -276,6 +219,8 @@ export default function Reports() {
     );
   }
 
+  if(creditsError||clientsError||commissionsError)return <MainLayout><Header title="Reportes y Analytics"/><main className="p-6"><p role="alert" className="text-sm text-destructive">No fue posible consultar todos los datos autorizados. Actualiza la página antes de exportar.</p></main></MainLayout>;
+
   return (
     <MainLayout>
       <Header 
@@ -300,17 +245,7 @@ export default function Reports() {
                 </SelectContent>
               </Select>
 
-              <Select value={reportType} onValueChange={setReportType}>
-                <SelectTrigger className="w-40 sm:w-44 h-8 text-xs bg-background border-border rounded-lg text-foreground font-medium" data-testid="select-report-type">
-                  <SelectValue placeholder="Tipo de reporte" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="overview" className="text-xs">Vista General</SelectItem>
-                  <SelectItem value="commissions" className="text-xs">Comisiones</SelectItem>
-                  <SelectItem value="clients" className="text-xs">Análisis de Clientes</SelectItem>
-                  <SelectItem value="performance" className="text-xs">Rendimiento</SelectItem>
-                </SelectContent>
-              </Select>
+
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -339,12 +274,12 @@ export default function Reports() {
 
           {/* Compact Key Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Métricas 1: Créditos Otorgados */}
+            {/* Métricas 1: Créditos con dispersión confirmada */}
             <Card className="border border-border shadow-sm bg-card">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Créditos Otorgados
+                    Créditos con dispersión confirmada
                   </p>
                   <p className="text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-total-credits">
                     {reportData.totalCredits}
@@ -370,7 +305,7 @@ export default function Reports() {
                     ${reportData.totalAmount.toLocaleString('es-MX')}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    MXN colocados
+                    MXN confirmados en el período
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center flex-shrink-0">
@@ -390,7 +325,7 @@ export default function Reports() {
                     ${reportData.avgCreditAmount.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Por crédito otorgado
+                    Por crédito con dispersión confirmada
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-amber-700 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
@@ -410,7 +345,7 @@ export default function Reports() {
                     ${totalCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Total del período
+                    {user?.role==="admin"||user?.role==="super_admin"?"Importe generado para la red":"Comisión correspondiente al asesor"} · período
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 text-purple-700 dark:text-purple-300 flex items-center justify-center flex-shrink-0">
@@ -429,7 +364,7 @@ export default function Reports() {
                   <BarChart2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   Tendencia Mensual
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">Histórico de créditos y montos colocados por mes</p>
+                <p className="text-xs text-muted-foreground">Dispersiones confirmadas por mes del período seleccionado</p>
               </CardHeader>
               <CardContent className="p-4 pt-3">
                 <ReportsChart
@@ -449,7 +384,7 @@ export default function Reports() {
                   <BarChart2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   Distribución por Estado
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">Proporción de solicitudes según estatus actual</p>
+                <p className="text-xs text-muted-foreground">Créditos registrados en el período según estado actual (sin históricos de seguimiento)</p>
               </CardHeader>
               <CardContent className="p-4 pt-3">
                 <ReportsChart
