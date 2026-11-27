@@ -21,6 +21,7 @@ on:
       - 'fix/matching-partial-opportunities-*'
       - 'fix/backoffice-delegated-capture-*'
       - 'fix/mobile-commercial-capture-*'
+      - 'fix/responsive-integral-*'
       - 'fix/backoffice-report-integrity-*'
       - 'fix/backoffice-historical-intake-*'
       - 'feat/commercial-mail-manager-*'
