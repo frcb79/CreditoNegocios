@@ -5,6 +5,7 @@ export const commercialMailSchema=z.object({name:z.string().trim().min(3).max(12
   if(v.audience==="individual"&&(v.recipientIds?.length??0)>1)ctx.addIssue({code:"custom",path:["recipientIds"],message:"El seguimiento individual admite un solo destinatario."});
   if(v.recipientIds && new Set(v.recipientIds).size!==v.recipientIds.length)ctx.addIssue({code:"custom",path:["recipientIds"],message:"No se permiten destinatarios duplicados."});
   if(v.steps.some((s,i)=>i>0&&s.day<=v.steps[i-1].day))ctx.addIssue({code:"custom",path:["steps"],message:"Los días deben ser únicos y ascendentes."});
+  if(v.audience==="pending_registration"&&v.steps.some(s=>![25,29,33,39].includes(s.day)||s.cta!=="activate"))ctx.addIssue({code:"custom",path:["steps"],message:"Recuperación: usa días 25, 29, 33, 39 y activación de cuenta."});
   if(v.steps.some(s=>s.cta==="activate"&&v.audience!=="pending_registration"))ctx.addIssue({code:"custom",path:["steps"],message:"El enlace de activación sólo aplica a registros pendientes."});
 });
 export type CommercialMailDraft=z.infer<typeof commercialMailSchema>;

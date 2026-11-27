@@ -73,11 +73,15 @@ export async function runBrokerInvitationReminders(): Promise<{
        AND (u.reset_token_expiry IS NULL OR u.reset_token_expiry <= NOW())
        AND coalesce(u.profile_data->>'invitationFollowupPaused', 'false') <> 'true'
        AND fi.invited_at <= NOW() - INTERVAL '3 days'
-       AND (NOT $1::boolean OR fi.invited_at > NOW() - INTERVAL '43 days')
-     ORDER BY fi.invited_at ASC LIMIT 250`,[process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true"]);
+       AND NOT EXISTS (SELECT 1 FROM public.commercial_mail_plan_jobs j JOIN public.commercial_mail_plans p ON p.id=j.plan_id
+          JOIN public.commercial_mail_approvals a ON a.plan_id=p.id
+          JOIN public.commercial_mail_draft_revisions r ON r.draft_id=p.draft_id AND r.revision=p.revision
+          WHERE j.user_id=u.id AND p.state='planned' AND r.content->>'audience'='pending_registration')
+     ORDER BY fi.invited_at ASC LIMIT 250`);
   const output = { due: 0, sent: 0, failed: 0, skipped: 0 };
   for (const user of rows) {
-    const day = selectReminderDay(new Date(user.invited_at), new Date(), process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true");
+    // Extended recovery is exclusively scheduled through approved commercial plans.
+    const day = selectReminderDay(new Date(user.invited_at), new Date(), false);
     if (!day) continue;
     // Uniqueness in Postgres is the cross-worker/idempotency boundary.
     const claim = await pool.query(
@@ -90,7 +94,7 @@ export async function runBrokerInvitationReminders(): Promise<{
     try {
       const refreshed = await storage.getUser(user.id);
       if (!refreshed || refreshed.password || refreshed.isActive === false ||
-          refreshed.status !== "active" || ["expired","suspended"].includes(refreshed.accessStatus) ||
+          refreshed.email !== user.email || refreshed.status !== "active" || ["expired","suspended"].includes(refreshed.accessStatus) ||
           (refreshed.profileData as any)?.commercialMailOptOut === true ||
           (refreshed.profileData as any)?.invitationFollowupPaused === true) {
         await pool.query(
@@ -104,12 +108,12 @@ export async function runBrokerInvitationReminders(): Promise<{
       // a token once a password has been registered, nor for paused accounts.
       const tokenSet = await pool.query(
         `UPDATE public.users SET reset_token=$2, reset_token_expiry=$3, updated_at=NOW()
-          WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE AND status='active' AND access_status NOT IN ('expired','suspended')
+          WHERE id=$1 AND email=$4 AND password IS NULL AND is_active IS DISTINCT FROM FALSE AND status='active' AND access_status NOT IN ('expired','suspended')
             AND COALESCE(profile_data->>'commercialMailOptOut','false') <> 'true'
             AND (reset_token_expiry IS NULL OR reset_token_expiry <= NOW())
             AND COALESCE(profile_data->>'invitationFollowupPaused','false') <> 'true'
         RETURNING id`,
-        [user.id, token, new Date(Date.now() + 86400000)],
+        [user.id, token, new Date(Date.now() + 86400000),user.email],
       );
       if (!tokenSet.rowCount) {
         await pool.query(
