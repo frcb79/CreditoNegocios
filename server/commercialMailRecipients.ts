@@ -2,7 +2,7 @@
 export const COMMERCIAL_MAIL_RECIPIENTS_SQL = `
 WITH invitation_users AS (
   SELECT DISTINCT data->>'brokerId' AS user_id FROM public.notifications
-  WHERE type='broker_invitation_sent'
+  WHERE type='broker_invitation_sent' AND created_at<=now()-interval '25 days'
 ), known_messages AS (
   SELECT user_id,provider_message_id FROM public.broker_activation_welcome_events
   UNION ALL SELECT user_id,provider_message_id FROM public.broker_invitation_reminder_events
