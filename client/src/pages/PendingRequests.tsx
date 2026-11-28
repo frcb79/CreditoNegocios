@@ -1116,7 +1116,7 @@ export default function PendingRequests() {
                                           className="ml-0 sm:ml-2 min-h-9 h-auto whitespace-normal text-xs"
                                           data-testid={`button-external-proposal-${target.id}`}
                                           onClick={() => {
-                                            proposalForm.reset({approvedAmount:Number(target.request?.requestedAmount || 0),interestRate:0,term:12,openingCommission:0,institutionProductId:undefined,versionNumber:undefined});
+                                            proposalForm.reset({approvedAmount:Number.NaN,interestRate:Number.NaN,term:Number.NaN,openingCommission:undefined,institutionProductId:undefined,versionNumber:undefined});
                                             setExternalEvidenceReference("");
                                             setExternalEvidenceReviewed(false);
                                             setSelectedTarget(target);
@@ -1540,7 +1540,7 @@ export default function PendingRequests() {
             </Dialog>
 
             <Dialog open={showProposalModal} onOpenChange={setShowProposalModal}>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-md max-h-[92dvh] overflow-y-auto overscroll-contain">
                 <DialogHeader>
                   <DialogTitle>{isExternalProposal ? "Registrar oferta externa autorizada" : "Capturar Propuesta de Financiera"}</DialogTitle>
                 </DialogHeader>
@@ -1595,7 +1595,7 @@ export default function PendingRequests() {
                       <p className="text-xs text-muted-foreground">
                         {institutionOffersLoading
                           ? "Consultando ofertas publicadas..."
-                          : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
+                          : isExternalProposal ? "No hay oferta publicada para esta financiera. Publica y verifica la oferta correspondiente antes de registrar una autorización externa." : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
                       </p>
                     )}
 
@@ -1609,6 +1609,7 @@ export default function PendingRequests() {
                             <Input
                               type="number"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseFloat(e.target.value))}
                             />
                           </FormControl>
@@ -1628,6 +1629,7 @@ export default function PendingRequests() {
                               type="number"
                               step="0.1"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseFloat(e.target.value))}
                             />
                           </FormControl>
@@ -1646,6 +1648,7 @@ export default function PendingRequests() {
                             <Input
                               type="number"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseInt(e.target.value))}
                             />
                           </FormControl>
@@ -1665,7 +1668,8 @@ export default function PendingRequests() {
                               type="number"
                               step="0.1"
                               {...field}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
+                              onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
                             />
                           </FormControl>
                           <FormMessage />
