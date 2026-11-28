@@ -12851,25 +12851,47 @@ function maskCLABE(clabe?: string | null): string | null {
         versionNumber: z.number().int().positive().optional(),
       });
 
+      const externalReviewInput = req.body.externalReview;
+      let externalReview: { reviewedBy: string; evidenceReference: string } | undefined;
+      if (externalReviewInput !== undefined) {
+        if (user.role !== "super_admin") return res.status(403).json({ message: "Solo Super Admin puede validar una oferta externa." });
+        const parsed = z.object({
+          evidenceReference: z.string().trim().min(3).max(300),
+          evidenceReviewed: z.literal(true),
+        }).strict().safeParse(externalReviewInput);
+        if (!parsed.success) return res.status(400).json({ message: "Confirma la revisión de la evidencia e indica su referencia." });
+        externalReview = { reviewedBy: userId, evidenceReference: parsed.data.evidenceReference };
+      }
       const targetBefore = await storage.getCreditSubmissionTarget(id);
       if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
       if (targetBefore.isWinner || targetBefore.creditId ||
           ["selected_winner", "dispersed"].includes(targetBefore.status)) {
         return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "La propuesta ya está seleccionada o vinculada a un crédito." });
       }
-      if (!["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
+      if (externalReview && targetBefore.status !== "approved") {
+        return res.status(409).json({ code: "EXTERNAL_PROPOSAL_REQUIRES_APPROVAL", message: "La oferta externa requiere visto bueno interno y no puede sustituir una propuesta ya registrada." });
+      }
+      if (!externalReview && !["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
         return res.status(409).json({
           code: "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT",
           message: "Primero debe aprobarse el destino e iniciarse la gestión comercial.",
         });
       }
-      const proposal = await validateTargetOfferVersion(targetBefore, proposalSchema.parse(req.body));
+      const parsedProposal = proposalSchema.parse(req.body);
+      if (externalReview && (!Number.isFinite(parsedProposal.approvedAmount) || parsedProposal.approvedAmount <= 0 ||
+          !Number.isFinite(parsedProposal.interestRate) || parsedProposal.interestRate < 0 ||
+          !Number.isSafeInteger(parsedProposal.term) || parsedProposal.term <= 0 ||
+          (parsedProposal.openingCommission !== undefined && (!Number.isFinite(parsedProposal.openingCommission) || parsedProposal.openingCommission < 0)) ||
+          !parsedProposal.institutionProductId || !parsedProposal.versionNumber)) {
+        return res.status(400).json({ message: "Indica las condiciones reales y la oferta publicada con su versión exacta." });
+      }
+      const proposal = await validateTargetOfferVersion(targetBefore, parsedProposal);
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
         institutionProposal: proposal,
         status: 'institution_approved',
         proposalReceivedAt: new Date(),
-      });
+      }, externalReview);
       
       if (!rawTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
@@ -12935,6 +12957,10 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("EXTERNAL_PROPOSAL_") || code === "REQUEST_CLOSED") {
+        return res.status(409).json({ code, message: "La oferta externa no pudo registrarse: verifica visto bueno, evidencia y estado de la solicitud." });
+      }
+      if (error instanceof z.ZodError) return res.status(400).json({message:"Condiciones de propuesta inválidas."});
       if (code.startsWith("OFFER_VERSION_")) {
         return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
       }
