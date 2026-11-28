@@ -643,6 +643,22 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
       const res = await request(app).post(`/api/clients/${client.id}/opportunities`).send(payload);
       expect(res.status).toBe(201);
       expect(res.body.opportunity).toMatchObject({brokerId:master.id,masterBrokerId:master.id,tenantId:tenant.id,status:"registered_hold"});
+      const template = await storage.createProductTemplate({name:"Crédito externo QA",category:"credito_simple",isActive:true,createdBy:admin.id} as any);
+      const institution = await storage.createFinancialInstitution({name:`Financiera QA ${randomUUID()}`,isActive:true} as any);
+      const {offer,version}=await storage.createOffer({institutionId:institution.id,templateId:template.id,name:"Oferta externa QA",productType:"credito_simple",isActive:true,status:"draft"},
+        {conditions:{minAmount:100,maxAmount:2000000},requirements:{targetProfiles:["persona_moral"]},requiredDocuments:[],changeReason:"Fixture QA"});
+      await storage.publishInstitutionProductVersion(offer.id,version.id,{changeReason:"Publicación QA"});
+      const external = await request(app).post("/api/credit-submissions").send({
+        clientId:client.id, productTemplateId:template.id, requestedAmount:"500000",
+        financialInstitutionIds:[institution.id], externalIntake:{reportedStatus:"disbursed",evidenceReference:"Folio QA"},
+        status:"dispersed"
+      });
+      expect(external.status).toBe(201);
+      expect(external.body.submission).toMatchObject({brokerId:master.id,tenantId:tenant.id,originMasterBrokerId:master.id,status:"pending_admin"});
+      expect(external.body.submission.brokerNotes).toContain("estado reportado, no validado");
+      expect(external.body.targets).toHaveLength(1);
+      expect(external.body.targets[0].status).toBe("pending_admin");
+      expect(await storage.getCredits(client.id)).toHaveLength(0);
       const outsider = await createTestUser("broker", "Broker Ajeno QA");
       const rejected = await request(app).post(`/api/clients/${client.id}/opportunities`).send({...payload,brokerId:outsider.id});
       expect(rejected.status).toBe(403);
