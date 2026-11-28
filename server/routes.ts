@@ -12885,6 +12885,13 @@ function maskCLABE(clabe?: string | null): string | null {
           !parsedProposal.institutionProductId || !parsedProposal.versionNumber)) {
         return res.status(400).json({ message: "Indica las condiciones reales y la oferta publicada con su versión exacta." });
       }
+      if (externalReview) {
+        const request = await storage.getCreditSubmissionRequest(targetBefore.requestId);
+        const product = await storage.getInstitutionProduct(parsedProposal.institutionProductId!);
+        if (!request?.productTemplateId || !product || product.templateId !== request.productTemplateId || product.isActive === false || product.status !== "published") {
+          return res.status(409).json({code:"EXTERNAL_PROPOSAL_PRODUCT_MISMATCH",message:"La oferta vigente debe corresponder al producto solicitado."});
+        }
+      }
       const proposal = await validateTargetOfferVersion(targetBefore, parsedProposal);
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
