@@ -122,7 +122,7 @@ export const CommercialOpportunityList: React.FC<CommercialOpportunityListProps>
           </h3>
           <div className="flex flex-wrap items-center gap-3 mt-1">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Protección de trabajo comercial efectivamente realizado por necesidad de financiamiento.
+              Reserva y protege el trabajo comercial. No crea una solicitud de crédito ni aparece en Aprobaciones.
             </p>
             <ContextualHelpLink
               slug="oportunidad-protegida"
@@ -139,7 +139,7 @@ export const CommercialOpportunityList: React.FC<CommercialOpportunityListProps>
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm self-start sm:self-auto"
           >
             <Plus className="h-4 w-4 mr-1.5" />
-            Nueva Oportunidad
+            Registrar protección comercial
           </Button>
         )}
       </div>
@@ -173,7 +173,7 @@ export const CommercialOpportunityList: React.FC<CommercialOpportunityListProps>
                 className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                Registrar primera oportunidad
+                Registrar primera protección
               </Button>
             )}
           </CardContent>
