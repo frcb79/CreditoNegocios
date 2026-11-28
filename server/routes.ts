@@ -11484,11 +11484,31 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
+      // External intake records a reported fact only. It must never skip the
+      // internal approval, offer acceptance or confirmed-disbursement gates.
+      const external = req.body.externalIntake;
+      let externalNotes: string | undefined;
+      if (external !== undefined) {
+        if (user.role !== 'super_admin') return res.status(403).json({ message: "El registro de gestión externa es exclusivo de Super Admin." });
+        const parsed = z.object({
+          reportedStatus: z.enum(["in_management", "approved", "disbursed"]),
+          evidenceReference: z.string().trim().min(3).max(300),
+        }).strict().safeParse(external);
+        if (!parsed.success || !Array.isArray(req.body.financialInstitutionIds) || req.body.financialInstitutionIds.length !== 1) {
+          return res.status(400).json({ message: "Indica el estado reportado, una referencia de evidencia y exactamente una financiera." });
+        }
+        const labels = { in_management: "En gestión", approved: "Autorizado", disbursed: "Dispersión reportada" };
+        externalNotes = "[Gestión externa — estado reportado, no validado: " + labels[parsed.data.reportedStatus] + "]\nReferencia: " + parsed.data.evidenceReference
+          + (typeof req.body.brokerNotes === "string" && req.body.brokerNotes.trim() ? "\n" + req.body.brokerNotes.trim() : "");
+      }
+      const captureClient = await storage.getClient(req.body.clientId);
+      const assignedOwner = ['admin','super_admin'].includes(user.role) && captureClient?.brokerId ? await storage.getUser(captureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (assignedOwner && ['broker','master_broker'].includes(assignedOwner.role) ? assignedOwner.id : undefined);
       const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body.brokerId,
+        requestedBrokerId: delegatedId,
       });
 
       if (!originationCheck.allowed) {
@@ -11518,6 +11538,7 @@ function maskCLABE(clabe?: string | null): string | null {
         tenantId: captureScope.tenantId,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
+        ...(externalNotes !== undefined ? { brokerNotes: externalNotes } : {}),
         status: 'pending_admin'
       });
 
