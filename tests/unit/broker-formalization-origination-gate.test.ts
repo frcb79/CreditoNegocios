@@ -626,6 +626,43 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
     });
   });
 
+  describe("Captura delegada y gestión externa", () => {
+    it("Super Admin conserva al Master asignado, su tenant y la atribución histórica", async () => {
+      const master = await createTestUser("master_broker", "Master Delegado QA");
+      await formalizeUserViaOtp(master, [
+        { document: "convenio", version: "1.0" },
+        { document: "reglas-red", version: "1.0" },
+        { document: "reglas-master", version: "1.0" },
+      ]);
+      const tenant = await storage.createTenant({name:"Master delegado QA",slug:`org-${randomUUID()}`,type:"master_broker"});
+      await storage.createTenantMember({tenantId:tenant.id,userId:master.id,role:"owner",canOriginate:true,isActive:true});
+      const client = await storage.createClient({type:"persona_moral",businessName:"Cliente delegado QA",brokerId:master.id,tenantId:tenant.id});
+      const admin = await createTestUser("super_admin", "Super Admin QA");
+      currentAuthUser = admin;
+      const payload = { title:"Protección QA",financingNeedType:"credito_empresarial",requestedAmount:500000 };
+      const res = await request(app).post(`/api/clients/${client.id}/opportunities`).send(payload);
+      expect(res.status).toBe(201);
+      expect(res.body.opportunity).toMatchObject({brokerId:master.id,masterBrokerId:master.id,tenantId:tenant.id,status:"registered_hold"});
+      const outsider = await createTestUser("broker", "Broker Ajeno QA");
+      const rejected = await request(app).post(`/api/clients/${client.id}/opportunities`).send({...payload,brokerId:outsider.id});
+      expect(rejected.status).toBe(403);
+      currentAuthUser = outsider;
+      const spoofed = await request(app).post(`/api/clients/${client.id}/opportunities`).send({...payload,brokerId:master.id});
+      expect(spoofed.status).toBe(403);
+    });
+
+    it("Gestión externa exige Super Admin, evidencia y una única financiera", async () => {
+      const broker = await createTestUser("broker", "Broker QA");
+      const admin = await createTestUser("super_admin", "Super Admin QA");
+      const payload = { externalIntake:{reportedStatus:"disbursed",evidenceReference:"Folio QA"}, financialInstitutionIds:[randomUUID()] };
+      currentAuthUser = broker;
+      expect((await request(app).post("/api/credit-submissions").send(payload)).status).toBe(403);
+      currentAuthUser = admin;
+      expect((await request(app).post("/api/credit-submissions").send({...payload,externalIntake:{reportedStatus:"disbursed",evidenceReference:""}})).status).toBe(400);
+      expect((await request(app).post("/api/credit-submissions").send({...payload,financialInstitutionIds:[randomUUID(),randomUUID()]})).status).toBe(400);
+    });
+  });
+
   describe("8. Registro, navegación y acceso al perfil antes de formalizar: funcionan normalmente", () => {
     it("Broker se registra y puede consultar su perfil y documentos legales sin bloqueo", async () => {
       // 1. Register new broker
