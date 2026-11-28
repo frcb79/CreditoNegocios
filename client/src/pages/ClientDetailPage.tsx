@@ -345,7 +345,7 @@ export default function ClientDetailPage() {
             data-testid="button-new-credit"
           >
             <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Nueva Oportunidad
+            Nueva Solicitud de Crédito
           </Button>
         </div>
       </Header>
