@@ -52,7 +52,7 @@ import { eq, ne, isNotNull, isNull, desc, asc, like, and, or, inArray, sql, gte 
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
 import { assertOfferCommissionAcceptanceInTransaction, assertLegacyProposalPredatesPublishedCatalogInTransaction } from "./offerCommissionTransactionalGate";
-import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { assertTargetReviewMutable, externalProposalReviewNote, type ExternalProposalReview } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { initialClientRelationship } from "./initialClientRelationship";
 import { randomUUID, createHash } from "crypto";
@@ -4799,10 +4799,10 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
+  async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>, externalReview?: ExternalProposalReview): Promise<CreditSubmissionTarget | undefined> {
     // This path can compete with selectWinningTargetAtomic. Both lock the same
     // target row so a late financial proposal cannot replace a frozen winner.
-    const isReviewTransition = targetData.institutionProposal !== undefined ||
+    const isReviewTransition = externalReview !== undefined || targetData.institutionProposal !== undefined ||
       targetData.proposalDocument !== undefined ||
       ["institution_approved", "institution_rejected", "approved", "rejected",
        "returned_to_broker", "sent"].includes(targetData.status || "");
@@ -4812,7 +4812,16 @@ export class DbStorage implements IStorage {
           .where(eq(creditSubmissionTargets.id, id)).for("update");
         if (!locked) return undefined;
         assertTargetReviewMutable(locked);
-        if ((targetData.institutionProposal !== undefined ||
+        let externalAdminNotes: string | undefined;
+        if (externalReview) {
+          if (targetData.status !== "institution_approved" || !targetData.institutionProposal || targetData.proposalDocument !== undefined) {
+            throw new Error("EXTERNAL_PROPOSAL_INVALID_TRANSITION");
+          }
+          const [parent] = await tx.select({status:creditSubmissionRequests.status})
+            .from(creditSubmissionRequests).where(eq(creditSubmissionRequests.id, locked.requestId)).for("update");
+          externalAdminNotes = externalProposalReviewNote(locked, parent?.status, externalReview);
+        }
+        if (!externalReview && (targetData.institutionProposal !== undefined ||
              targetData.proposalDocument !== undefined ||
              targetData.status === "institution_approved") &&
             !["contact_initiated", "sent", "institution_approved"].includes(locked.status)) {
@@ -4838,7 +4847,7 @@ export class DbStorage implements IStorage {
           }
         }
         const [updated] = await tx.update(creditSubmissionTargets)
-          .set({ ...targetData, institutionProductId: frozen?.institutionProductId ?? null,
+          .set({ ...targetData, ...(externalAdminNotes !== undefined ? {adminNotes:externalAdminNotes} : {}), institutionProductId: frozen?.institutionProductId ?? null,
             versionNumber: frozen?.versionNumber ?? null, updatedAt: new Date() })
           .where(eq(creditSubmissionTargets.id, id)).returning();
         return updated;
