@@ -4173,8 +4173,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
-      const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+      if (!user) return res.status(403).json({ message: "Usuario no autorizado" });
+      const isPlatformAdmin = user.role === 'super_admin' || (user.role === 'admin' && req.tenantContext?.isPlatformAdmin === true);
+      const client = await storage.getClient(id);
+      if (!client) return res.status(404).json({ message: "Cliente no encontrado." });
+      if (!isPlatformAdmin && brokerId && brokerId !== userId) {
+        return res.status(403).json({ message: "No puedes registrar oportunidades a nombre de otro asesor." });
+      }
+      const owner = isPlatformAdmin && client.brokerId ? await storage.getUser(client.brokerId) : undefined;
+      const delegatedOwner = owner && ['broker', 'master_broker'].includes(owner.role) ? owner.id : undefined;
+      const targetBrokerId = isPlatformAdmin ? (brokerId || delegatedOwner || userId) : userId;
+      if (isPlatformAdmin && targetBrokerId !== userId) {
+        const access = await validateClientOriginationAccess({
+          clientId: id, callerUser: user, effectiveBrokerId: targetBrokerId, tenantContext: req.tenantContext
+        });
+        if (!access.allowed) return res.status(access.statusCode || 403).json({ code: access.code, message: access.message });
+        const effectiveBroker = await storage.getUser(targetBrokerId);
+        const commercialAccess = await authorizeClientAccess(targetBrokerId, effectiveBroker!.role, id);
+        // An assigned client can be originated on behalf of its owner even
+        // before the first protected opportunity; mere network oversight cannot.
+        if (client.brokerId !== targetBrokerId && !commercialAccess.capabilities.canCreateOpportunity) {
+          return res.status(403).json({ message: "El asesor no tiene facultad comercial sobre este cliente." });
+        }
+      }
+      const captureScope = await resolveAdminCaptureTenant(user, targetBrokerId, req.tenantContext?.tenant?.id || null, client.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({ code: "ORIGINATOR_ORGANIZATION_REQUIRED", message: captureScope.message });
 
       const formalizationCheck = await validateEffectiveBrokerFormalization(
         {
@@ -4194,7 +4217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await commercialOpportunityService.createOpportunity({
         clientId: id,
         brokerId: targetBrokerId,
-        tenantId: req.tenantContext?.tenant?.id || null,
+        tenantId: captureScope.tenantId,
         title,
         financingNeedType,
         requestedAmount,
