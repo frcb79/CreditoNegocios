@@ -20,6 +20,7 @@ on:
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
       - 'fix/backoffice-delegated-capture-*'
+      - 'fix/delegated-opportunities-external-intake'
       - 'fix/mobile-commercial-capture-*'
       - 'fix/responsive-integral-*'
       - 'fix/backoffice-report-integrity-*'

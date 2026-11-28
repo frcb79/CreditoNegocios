@@ -107,6 +107,9 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   const isPlatformAdmin = user?.role === "admin" || user?.role === "super_admin";
   const queryClient = useQueryClient();
   const [selectedInstitutions, setSelectedInstitutions] = useState<string[]>([]);
+  const [externalStatus, setExternalStatus] = useState("none");
+  const [externalReference, setExternalReference] = useState("");
+  const isExternalIntake = user?.role === "super_admin" && externalStatus !== "none";
 
   // Form setup
   const form = useForm<CreditRequestForm>({
@@ -133,6 +136,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         financialInstitutionIds: [],
       });
       setSelectedInstitutions([]);
+      setExternalStatus("none");
+      setExternalReference("");
     }
   }, [isOpen, preselectedClientId, form]);
 
@@ -160,6 +165,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         purpose: data.purpose,
         brokerNotes: data.brokerNotes,
         financialInstitutionIds: data.financialInstitutionIds,
+        ...(isExternalIntake ? { externalIntake: { reportedStatus: externalStatus, evidenceReference: externalReference.trim() } } : {}),
         ...(isPlatformAdmin && selectedClient?.brokerId && ["broker","master_broker"].includes(selectedClient.broker?.role) ? { brokerId: selectedClient.brokerId } : {}),
       };
 
@@ -200,6 +206,10 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   };
 
   const onSubmit = (data: CreditRequestForm) => {
+    if (isExternalIntake && (data.financialInstitutionIds.length !== 1 || externalReference.trim().length < 3)) {
+      toast({ title: "Completa la gestión externa", description: "Selecciona una sola financiera e indica la referencia de evidencia.", variant: "destructive" });
+      return;
+    }
     const allowed = new Set(institutionsWithMatch.filter(i=>i.match.isConfigured!==false).map(i=>i.institution.id));
     if (previewUrl!==settledPreviewUrl || matching.isError || matching.isFetching || !matching.data ||
       data.financialInstitutionIds.some(id=>!allowed.has(id))) {
@@ -532,6 +542,29 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               </div>
             )}
 
+            {user?.role === "super_admin" && (
+              <div className="rounded-lg border border-border p-3 space-y-2">
+                <label htmlFor="external-intake-status" className="text-sm font-medium">¿La operación fue gestionada fuera de la plataforma?</label>
+                <select id="external-intake-status" data-testid="external-intake-status" value={externalStatus}
+                  onChange={e => setExternalStatus(e.target.value)}
+                  className="w-full min-h-11 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="none">No, es una nueva solicitud</option>
+                  <option value="in_management">Sí, en gestión</option>
+                  <option value="approved">Sí, autorizada por la financiera</option>
+                  <option value="disbursed">Sí, dispersión reportada</option>
+                </select>
+                {isExternalIntake && (
+                  <div className="space-y-2">
+                    <label htmlFor="external-intake-reference" className="text-sm font-medium">Referencia de evidencia</label>
+                    <Input id="external-intake-reference" data-testid="external-intake-reference" value={externalReference}
+                      onChange={e => setExternalReference(e.target.value)} maxLength={300}
+                      placeholder="Folio o referencia del documento de la financiera" />
+                    <p className="text-xs text-muted-foreground">Elige una sola financiera. El estado reportado se registra en las notas; no sustituye la oferta, su aceptación ni la confirmación del desembolso. No incluyas datos sensibles en esta referencia.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Product Template Selection */}
             <FormField
               control={form.control}
@@ -784,7 +817,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                 ) : (
                   <>
                     <Send className="w-4 h-4 mr-2" />
-                    Registrar para Revisión Interna
+                    {isExternalIntake ? "Registrar gestión externa" : "Registrar para Revisión Interna"}
                   </>
                 )}
               </Button>

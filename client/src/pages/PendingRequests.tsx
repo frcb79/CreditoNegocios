@@ -171,10 +171,13 @@ export default function PendingRequests() {
   const [reviewAction, setReviewAction] = useState<'approve' | 'return_to_broker' | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
+  const [externalEvidenceReference, setExternalEvidenceReference] = useState("");
+  const [externalEvidenceReviewed, setExternalEvidenceReviewed] = useState(false);
   const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(new Set());
   const [expandedInstitutionsPerSubmission, setExpandedInstitutionsPerSubmission] = useState<Record<string, Set<string>>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
+  const isExternalProposal = user?.role === "super_admin" && selectedTarget?.status === "approved";
   const [confirmingTarget, setConfirmingTarget] = useState<CreditSubmissionTarget | null>(null);
   const [clientConsentReviewTarget, setClientConsentReviewTarget] = useState<CreditSubmissionTarget | null>(null);
   const [clientConsentReviewEvidenceId,setClientConsentReviewEvidenceId] = useState("");
@@ -344,8 +347,10 @@ export default function PendingRequests() {
   });
 
   const proposalMutation = useMutation({
-    mutationFn: async (data: { targetId: string; proposal: ProposalForm }) => {
-      return apiRequest("POST", `/api/credit-submission-targets/${data.targetId}/institution-proposal`, data.proposal);
+    mutationFn: async (data: { targetId: string; proposal: ProposalForm; externalReview?: { evidenceReference: string; evidenceReviewed: true } }) => {
+      return apiRequest("POST", `/api/credit-submission-targets/${data.targetId}/institution-proposal`, {
+        ...data.proposal, ...(data.externalReview ? {externalReview:data.externalReview} : {})
+      });
     },
     onSuccess: () => {
       toast({
@@ -356,7 +361,10 @@ export default function PendingRequests() {
       setShowProposalModal(false);
       setSelectedTarget(null);
       proposalForm.reset();
+      setExternalEvidenceReference("");
+      setExternalEvidenceReviewed(false);
     },
+    onError: (error: any) => toast({ title: "No se guardó la propuesta", description: error.message || "Revisa las condiciones y el estado de la solicitud.", variant: "destructive" }),
   });
 
   const uploadDocumentMutation = useMutation({
@@ -483,9 +491,14 @@ export default function PendingRequests() {
       toast({ title: "Selecciona la oferta exacta", description: "La propuesta debe vincularse al producto y versión publicados.", variant: "destructive" });
       return;
     }
+    if (isExternalProposal && (!externalEvidenceReviewed || externalEvidenceReference.trim().length < 3 || !data.institutionProductId || !data.versionNumber)) {
+      toast({title:"Revisión externa incompleta",description:"Selecciona la oferta publicada y confirma la evidencia con su referencia.",variant:"destructive"});
+      return;
+    }
     proposalMutation.mutate({
       targetId: selectedTarget.id,
       proposal: data,
+      ...(isExternalProposal ? {externalReview:{evidenceReference:externalEvidenceReference.trim(),evidenceReviewed:true as const}} : {}),
     });
   };
 
@@ -1098,6 +1111,20 @@ export default function PendingRequests() {
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
                                         Iniciar gestión comercial
                                       </Button>
+                                      {user?.role === "super_admin" && (
+                                        <Button size="sm" variant="outline"
+                                          className="ml-0 sm:ml-2 min-h-9 h-auto whitespace-normal text-xs"
+                                          data-testid={`button-external-proposal-${target.id}`}
+                                          onClick={() => {
+                                            proposalForm.reset({approvedAmount:Number.NaN,interestRate:Number.NaN,term:Number.NaN,openingCommission:undefined,institutionProductId:undefined,versionNumber:undefined});
+                                            setExternalEvidenceReference("");
+                                            setExternalEvidenceReviewed(false);
+                                            setSelectedTarget(target);
+                                            setShowProposalModal(true);
+                                          }}>
+                                          Registrar oferta externa autorizada
+                                        </Button>
+                                      )}
                                       <p className="text-xs text-slate-600">
                                         Registra el inicio de una gestión interna. No envía expedientes, datos ni documentos.
                                       </p>
@@ -1513,13 +1540,26 @@ export default function PendingRequests() {
             </Dialog>
 
             <Dialog open={showProposalModal} onOpenChange={setShowProposalModal}>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-md max-h-[92dvh] overflow-y-auto overscroll-contain">
                 <DialogHeader>
-                  <DialogTitle>Capturar Propuesta de Financiera</DialogTitle>
+                  <DialogTitle>{isExternalProposal ? "Registrar oferta externa autorizada" : "Capturar Propuesta de Financiera"}</DialogTitle>
                 </DialogHeader>
 
                 <Form {...proposalForm}>
                   <form onSubmit={proposalForm.handleSubmit(handleProposalSubmit)} className="space-y-4">
+                    {isExternalProposal && (
+                      <div className="rounded-md border border-border p-3 space-y-2">
+                        <p className="text-xs text-muted-foreground">Captura las condiciones reales. No se envía información a la financiera ni se acepta la oferta o confirma el desembolso.</p>
+                        <label htmlFor="external-offer-reference" className="text-sm font-medium">Referencia de evidencia</label>
+                        <Input id="external-offer-reference" value={externalEvidenceReference} maxLength={300}
+                          onChange={e=>setExternalEvidenceReference(e.target.value)} placeholder="Folio o referencia del documento" />
+                        <label className="flex items-start gap-2 text-xs">
+                          <input type="checkbox" checked={externalEvidenceReviewed}
+                            onChange={e=>setExternalEvidenceReviewed(e.target.checked)} className="mt-0.5" />
+                          Confirmo que revisé la autorización y sus condiciones con la financiera.
+                        </label>
+                      </div>
+                    )}
                     {publishedOffers.length > 0 ? (
                       <FormField
                         control={proposalForm.control}
@@ -1555,7 +1595,7 @@ export default function PendingRequests() {
                       <p className="text-xs text-muted-foreground">
                         {institutionOffersLoading
                           ? "Consultando ofertas publicadas..."
-                          : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
+                          : isExternalProposal ? "No hay oferta publicada para esta financiera. Publica y verifica la oferta correspondiente antes de registrar una autorización externa." : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
                       </p>
                     )}
 
@@ -1569,6 +1609,7 @@ export default function PendingRequests() {
                             <Input
                               type="number"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseFloat(e.target.value))}
                             />
                           </FormControl>
@@ -1588,6 +1629,7 @@ export default function PendingRequests() {
                               type="number"
                               step="0.1"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseFloat(e.target.value))}
                             />
                           </FormControl>
@@ -1606,6 +1648,7 @@ export default function PendingRequests() {
                             <Input
                               type="number"
                               {...field}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
                               onChange={(e) => field.onChange(parseInt(e.target.value))}
                             />
                           </FormControl>
@@ -1625,7 +1668,8 @@ export default function PendingRequests() {
                               type="number"
                               step="0.1"
                               {...field}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              value={typeof field.value === "number" && Number.isFinite(field.value) ? field.value : ""}
+                              onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1644,7 +1688,7 @@ export default function PendingRequests() {
                       </Button>
                       <Button
                         type="submit"
-                        disabled={proposalMutation.isPending}
+                        disabled={proposalMutation.isPending || (isExternalProposal && (!externalEvidenceReviewed || externalEvidenceReference.trim().length < 3 || publishedOffers.length === 0))}
                         className="bg-primary text-primary-foreground hover:bg-primary/90"
                       >
                         {proposalMutation.isPending ? (

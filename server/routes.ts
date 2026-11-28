@@ -4173,8 +4173,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
-      const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+      if (!user) return res.status(403).json({ message: "Usuario no autorizado" });
+      const isPlatformAdmin = user.role === 'super_admin' || (user.role === 'admin' && req.tenantContext?.isPlatformAdmin === true);
+      const client = await storage.getClient(id);
+      if (!client) return res.status(404).json({ message: "Cliente no encontrado." });
+      if (!isPlatformAdmin && brokerId && brokerId !== userId) {
+        return res.status(403).json({ message: "No puedes registrar oportunidades a nombre de otro asesor." });
+      }
+      const owner = isPlatformAdmin && client.brokerId ? await storage.getUser(client.brokerId) : undefined;
+      const delegatedOwner = owner && ['broker', 'master_broker'].includes(owner.role) ? owner.id : undefined;
+      const targetBrokerId = isPlatformAdmin ? (brokerId || delegatedOwner || userId) : userId;
+      if (isPlatformAdmin && targetBrokerId !== userId) {
+        const access = await validateClientOriginationAccess({
+          clientId: id, callerUser: user, effectiveBrokerId: targetBrokerId, tenantContext: req.tenantContext
+        });
+        if (!access.allowed) return res.status(access.statusCode || 403).json({ code: access.code, message: access.message });
+        const effectiveBroker = await storage.getUser(targetBrokerId);
+        const commercialAccess = await authorizeClientAccess(targetBrokerId, effectiveBroker!.role, id);
+        // An assigned client can be originated on behalf of its owner even
+        // before the first protected opportunity; mere network oversight cannot.
+        if (client.brokerId !== targetBrokerId && !commercialAccess.capabilities.canCreateOpportunity) {
+          return res.status(403).json({ message: "El asesor no tiene facultad comercial sobre este cliente." });
+        }
+      }
+      const captureScope = await resolveAdminCaptureTenant(user, targetBrokerId, req.tenantContext?.tenant?.id || null, client.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({ code: "ORIGINATOR_ORGANIZATION_REQUIRED", message: captureScope.message });
 
       const formalizationCheck = await validateEffectiveBrokerFormalization(
         {
@@ -4194,7 +4217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await commercialOpportunityService.createOpportunity({
         clientId: id,
         brokerId: targetBrokerId,
-        tenantId: req.tenantContext?.tenant?.id || null,
+        tenantId: captureScope.tenantId,
         title,
         financingNeedType,
         requestedAmount,
@@ -11461,11 +11484,31 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
+      // External intake records a reported fact only. It must never skip the
+      // internal approval, offer acceptance or confirmed-disbursement gates.
+      const external = req.body.externalIntake;
+      let externalNotes: string | undefined;
+      if (external !== undefined) {
+        if (user.role !== 'super_admin') return res.status(403).json({ message: "El registro de gestión externa es exclusivo de Super Admin." });
+        const parsed = z.object({
+          reportedStatus: z.enum(["in_management", "approved", "disbursed"]),
+          evidenceReference: z.string().trim().min(3).max(300),
+        }).strict().safeParse(external);
+        if (!parsed.success || !Array.isArray(req.body.financialInstitutionIds) || req.body.financialInstitutionIds.length !== 1) {
+          return res.status(400).json({ message: "Indica el estado reportado, una referencia de evidencia y exactamente una financiera." });
+        }
+        const labels = { in_management: "En gestión", approved: "Autorizado", disbursed: "Dispersión reportada" };
+        externalNotes = "[Gestión externa — estado reportado, no validado: " + labels[parsed.data.reportedStatus] + "]\nReferencia: " + parsed.data.evidenceReference
+          + (typeof req.body.brokerNotes === "string" && req.body.brokerNotes.trim() ? "\n" + req.body.brokerNotes.trim() : "");
+      }
+      const captureClient = await storage.getClient(req.body.clientId);
+      const assignedOwner = ['admin','super_admin'].includes(user.role) && captureClient?.brokerId ? await storage.getUser(captureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (assignedOwner && ['broker','master_broker'].includes(assignedOwner.role) ? assignedOwner.id : undefined);
       const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body.brokerId,
+        requestedBrokerId: delegatedId,
       });
 
       if (!originationCheck.allowed) {
@@ -11495,6 +11538,7 @@ function maskCLABE(clabe?: string | null): string | null {
         tenantId: captureScope.tenantId,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
+        ...(externalNotes !== undefined ? { brokerNotes: externalNotes } : {}),
         status: 'pending_admin'
       });
 
@@ -12807,25 +12851,54 @@ function maskCLABE(clabe?: string | null): string | null {
         versionNumber: z.number().int().positive().optional(),
       });
 
+      const externalReviewInput = req.body.externalReview;
+      let externalReview: { reviewedBy: string; evidenceReference: string } | undefined;
+      if (externalReviewInput !== undefined) {
+        if (user.role !== "super_admin") return res.status(403).json({ message: "Solo Super Admin puede validar una oferta externa." });
+        const parsed = z.object({
+          evidenceReference: z.string().trim().min(3).max(300),
+          evidenceReviewed: z.literal(true),
+        }).strict().safeParse(externalReviewInput);
+        if (!parsed.success) return res.status(400).json({ message: "Confirma la revisión de la evidencia e indica su referencia." });
+        externalReview = { reviewedBy: userId, evidenceReference: parsed.data.evidenceReference };
+      }
       const targetBefore = await storage.getCreditSubmissionTarget(id);
       if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
       if (targetBefore.isWinner || targetBefore.creditId ||
           ["selected_winner", "dispersed"].includes(targetBefore.status)) {
         return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "La propuesta ya está seleccionada o vinculada a un crédito." });
       }
-      if (!["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
+      if (externalReview && targetBefore.status !== "approved") {
+        return res.status(409).json({ code: "EXTERNAL_PROPOSAL_REQUIRES_APPROVAL", message: "La oferta externa requiere visto bueno interno y no puede sustituir una propuesta ya registrada." });
+      }
+      if (!externalReview && !["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
         return res.status(409).json({
           code: "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT",
           message: "Primero debe aprobarse el destino e iniciarse la gestión comercial.",
         });
       }
-      const proposal = await validateTargetOfferVersion(targetBefore, proposalSchema.parse(req.body));
+      const parsedProposal = proposalSchema.parse(req.body);
+      if (externalReview && (!Number.isFinite(parsedProposal.approvedAmount) || parsedProposal.approvedAmount <= 0 ||
+          !Number.isFinite(parsedProposal.interestRate) || parsedProposal.interestRate < 0 ||
+          !Number.isSafeInteger(parsedProposal.term) || parsedProposal.term <= 0 ||
+          (parsedProposal.openingCommission !== undefined && (!Number.isFinite(parsedProposal.openingCommission) || parsedProposal.openingCommission < 0)) ||
+          !parsedProposal.institutionProductId || !parsedProposal.versionNumber)) {
+        return res.status(400).json({ message: "Indica las condiciones reales y la oferta publicada con su versión exacta." });
+      }
+      if (externalReview) {
+        const request = await storage.getCreditSubmissionRequest(targetBefore.requestId);
+        const product = await storage.getInstitutionProduct(parsedProposal.institutionProductId!);
+        if (!request?.productTemplateId || !product || product.templateId !== request.productTemplateId || product.isActive === false || product.status !== "published") {
+          return res.status(409).json({code:"EXTERNAL_PROPOSAL_PRODUCT_MISMATCH",message:"La oferta vigente debe corresponder al producto solicitado."});
+        }
+      }
+      const proposal = await validateTargetOfferVersion(targetBefore, parsedProposal);
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
         institutionProposal: proposal,
         status: 'institution_approved',
         proposalReceivedAt: new Date(),
-      });
+      }, externalReview);
       
       if (!rawTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
@@ -12891,6 +12964,10 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("EXTERNAL_PROPOSAL_") || code === "REQUEST_CLOSED") {
+        return res.status(409).json({ code, message: "La oferta externa no pudo registrarse: verifica visto bueno, evidencia y estado de la solicitud." });
+      }
+      if (error instanceof z.ZodError) return res.status(400).json({message:"Condiciones de propuesta inválidas."});
       if (code.startsWith("OFFER_VERSION_")) {
         return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
       }

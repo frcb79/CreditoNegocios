@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { randomUUID, createHash } from "crypto";
 import { annualCourtesyExpiry } from "./invitationWelcomePromo";
-import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { assertTargetReviewMutable, externalProposalReviewNote, type ExternalProposalReview } from "./targetReviewTransitions";
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import catalog from "./legalDocumentCatalog.json";
 import {
@@ -540,7 +540,7 @@ export interface IStorage {
   getCreditSubmissionTargetByCreditId(creditId: string): Promise<CreditSubmissionTarget | undefined>;
   getCreditSubmissionTargetsByRequest(requestId: string): Promise<CreditSubmissionTarget[]>;
   createCreditSubmissionTarget(targetData: InsertCreditSubmissionTarget): Promise<CreditSubmissionTarget>;
-  updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined>;
+  updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>, externalReview?: ExternalProposalReview): Promise<CreditSubmissionTarget | undefined>;
   approveCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string, details?: string): Promise<CreditSubmissionTarget | undefined>;
   rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
   returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
@@ -5121,15 +5121,23 @@ export class MemStorage implements IStorage {
     return target;
   }
 
-  async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
+  async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>, externalReview?: ExternalProposalReview): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(id);
     if (!existing) return undefined;
-    if (targetData.institutionProposal !== undefined ||
+    let externalAdminNotes: string | undefined;
+    if (externalReview) {
+      if (targetData.status !== "institution_approved" || !targetData.institutionProposal || targetData.proposalDocument !== undefined) {
+        throw new Error("EXTERNAL_PROPOSAL_INVALID_TRANSITION");
+      }
+      const parent = await this.getCreditSubmissionRequest(existing.requestId);
+      externalAdminNotes = externalProposalReviewNote(existing, parent?.status, externalReview);
+    }
+    if (externalReview || targetData.institutionProposal !== undefined ||
         targetData.proposalDocument !== undefined ||
         ["institution_approved", "institution_rejected", "approved", "rejected",
           "returned_to_broker", "sent"].includes(targetData.status || "")) {
       assertTargetReviewMutable(existing);
-      if ((targetData.institutionProposal !== undefined ||
+      if (!externalReview && (targetData.institutionProposal !== undefined ||
            targetData.proposalDocument !== undefined ||
            targetData.status === "institution_approved") &&
           !["contact_initiated", "sent", "institution_approved"].includes(existing.status)) {
@@ -5140,6 +5148,7 @@ export class MemStorage implements IStorage {
     const updated: CreditSubmissionTarget = {
       ...existing,
       ...targetData,
+      ...(externalAdminNotes !== undefined ? {adminNotes:externalAdminNotes} : {}),
       updatedAt: new Date(),
     };
     this.creditSubmissionTargets.set(id, updated);
