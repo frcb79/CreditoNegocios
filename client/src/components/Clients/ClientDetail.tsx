@@ -203,7 +203,7 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
             data-testid="button-new-credit"
           >
             <CreditCard className="h-4 w-4 mr-2" />
-            Nueva Oportunidad
+            Nueva Solicitud de Crédito
           </Button>
           <Button 
             variant="outline"
