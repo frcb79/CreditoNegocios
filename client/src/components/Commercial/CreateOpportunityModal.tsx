@@ -131,9 +131,9 @@ export const CreateOpportunityModal: React.FC<CreateOpportunityModalProps> = ({
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-bold">Nueva Oportunidad Comercial</DialogTitle>
+              <DialogTitle className="text-lg font-bold">Registrar protección comercial</DialogTitle>
               <DialogDescription className="text-xs">
-                {clientName ? `Para: ${clientName}` : "Registra una necesidad de financiamiento protegida"}
+                {clientName ? `Para: ${clientName}` : "Reserva comercial; no crea una solicitud de crédito"}
               </DialogDescription>
             </div>
           </div>
